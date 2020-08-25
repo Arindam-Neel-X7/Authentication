@@ -4,7 +4,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const md5 = require("md5");
+// Level-4 Authentication : Replacing md5 with bcrypt
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 
 const app = express();
@@ -46,38 +48,43 @@ app.get("/register",function(req,res){
 
 // Level-1 Authentication : Saving User credentials as plain text in our database.
 app.post("/register",function(req,res){
-  // Creating New User using the mongoose model
-    const newUser = new User({
-      email: req.body.username,
-      password: md5(req.body.password)    // Level-3 Authentication : HASHING
-    });
+  // Auto - Generating Hash
+  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+    // Creating New User using the mongoose model
+      const newUser = new User({
+        email: req.body.username,
+        password: hash    // Level-3 Authentication : HASHING upgraded to Level  4 : Salting and HASHING
+      });
 
-    newUser.save(function(err){
-      if(err){
-        console.log(err);
-      }else{
-        res.render("secrets");
-      }
-    });
+      newUser.save(function(err){
+        if(err){
+          console.log(err);
+        }else{
+          res.render("secrets");
+        }
+      });
+});
 });
 
 
 // Checking User login credentials validation in our database
 app.post("/login",function(req,res){
   const username = req.body.username;
-  const password = md5(req.body.password); // Level 3 Authentication : HASHING
+  const password = req.body.password; // Level 3 Authentication : HASHING
 
   User.findOne({email: username},function(err,foundUser){
     if(err){
       console.log(err);
     }else{
       if(foundUser){
-        if(foundUser.password === password){
-          res.render("secrets");
+        bcrypt.compare(password,foundUser.password, function(err, result) {
+            if(result === true){
+                res.render("secrets");
+            }
+        });
         }
       }
-    }
-  });
+      });
 });
 
 
