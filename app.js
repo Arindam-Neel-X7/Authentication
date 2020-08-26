@@ -5,8 +5,10 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 // Level-4 Authentication : Replacing md5 with bcrypt
-const bcrypt = require('bcrypt');
-const saltRounds = 10;
+// Replacing Level-4 with Level-5 Authentication : Passport.js
+const session = require('express-session');
+const passport = require('passport');
+const passportLocalMongoose = require('passport-local-mongoose');
 
 
 const app = express();
@@ -17,20 +19,52 @@ app.use(bodyParser.urlencoded({
   extended: true
 }));
 
+// Removal of DeprecationWarning: Unhandled promise rejections are deprecated
+var somevar = false;
+var PTest = function () {
+    return new Promise(function (resolve, reject) {
+        if (somevar === true)
+            resolve();
+        else
+            reject();
+    });
+}
+var myfunc = PTest();
+myfunc.then(function () {
+    // console.log("Promise Resolved");
+}).catch(function () {
+    // console.log("Promise Rejected");
+});
+
+// Setting up session
+app.use(session({
+  secret: 'Our little secret.',
+  resave: false,
+  saveUninitialized: false,
+}));
+
+// Setting Up Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Mongoose Connection
 mongoose.connect('mongodb://localhost:27017/userdb', {useNewUrlParser: true, useUnifiedTopology: true});
+mongoose.set('useCreateIndex', true);
 // Mongoose Schema
 const userSchema = new mongoose.Schema({
   email: String,
   password: String
 });
 
+// Setting Up passport-local-Mongoose
+userSchema.plugin(passportLocalMongoose);
 // Level-2 Authentication - Encryption of Users database
-
-
-
 // Mongoose User model
 const User = new mongoose.model("User",userSchema);
+// CHANGE: USE "createStrategy" INSTEAD OF "authenticate"
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 // To view the some of the homepage we need to render the app.get request
 
@@ -46,48 +80,53 @@ app.get("/register",function(req,res){
   res.render("register");
 });
 
-// Level-1 Authentication : Saving User credentials as plain text in our database.
-app.post("/register",function(req,res){
-  // Auto - Generating Hash
-  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
-    // Creating New User using the mongoose model
-      const newUser = new User({
-        email: req.body.username,
-        password: hash    // Level-3 Authentication : HASHING upgraded to Level  4 : Salting and HASHING
-      });
+app.get("/secrets",function(req,res){
+  if(req.isAuthenticated()){
+  res.render("secrets");
+} else {
+  res.redirect("/login");
+}
+});
 
-      newUser.save(function(err){
-        if(err){
-          console.log(err);
-        }else{
-          res.render("secrets");
-        }
-      });
+app.get("/logout",function(req,res){
+  req.logout();
+  res.redirect("/");
 });
+
+// Level-5 Authentication
+app.post("/register",function(req,res){
+  User.register({username: req.body.username}, req.body.password, function(err, user) {
+  if (err) {
+      console.log(err);
+      res.redirect("/register");
+   } else{
+     passport.authenticate("local")(req,res,function(){
+       res.redirect("/secrets");
+     });
+   }
+  });
 });
+
 
 
 // Checking User login credentials validation in our database
 app.post("/login",function(req,res){
-  const username = req.body.username;
-  const password = req.body.password; // Level 3 Authentication : HASHING
-
-  User.findOne({email: username},function(err,foundUser){
-    if(err){
-      console.log(err);
-    }else{
-      if(foundUser){
-        bcrypt.compare(password,foundUser.password, function(err, result) {
-            if(result === true){
-                res.render("secrets");
-            }
-        });
-        }
-      }
-      });
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
+  req.logIn(user, function(err) {
+     if (err) {
+       console.log(err);
+     }
+  else{
+    passport.authenticate("local")(req,res,function(){
+      res.redirect("/secrets");
+    });
+  }
 });
 
-
+});
 app.listen(3000,function(){
   console.log("Server Started at port 3000.");
 });
